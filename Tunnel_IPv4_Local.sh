@@ -319,6 +319,41 @@ EOF
     sudo systemctl start easymesh.service &> /dev/null
     clear
 
+    # Function to set cronjob
+
+    local service_name="easymesh.service"
+    local reset_path="/root/easytier/reset.sh"
+    
+    # Create the reset script
+    cat << EOF > "$reset_path"
+#! /bin/bash
+pids=\$(pgrep easytier)
+sudo kill -9 \$pids
+sudo systemctl daemon-reload
+sudo systemctl restart $service_name
+EOF
+
+    # Make the script executable
+    sudo chmod +x "$reset_path"
+    
+    # Save existing crontab to a temporary file
+    crontab -l > /tmp/crontab.tmp
+
+    # Remove any existing cron jobs for this service
+    grep -v "#$service_name" /tmp/crontab.tmp > /tmp/crontab.tmp.new
+    mv /tmp/crontab.tmp.new /tmp/crontab.tmp
+
+    # Append the new cron job to the temporary file
+    echo -e "${BOLD_GREEN}0 */2 * * * $reset_path #$service_name${NC}" >> /tmp/crontab.tmp
+
+    # Install the modified crontab from the temporary file
+    crontab /tmp/crontab.tmp
+
+    # Remove the temporary file
+    rm /tmp/crontab.tmp
+
+    echo -e "${BOLD_GREEN}Cron job set up to restart the service '$service_name' every 2 hours.${NC}"
+
     # Display tunnel configuration details
     echo -e "${BOLD_GREEN}IPv4 Tunnel configuration completed and service started.${NC}"
     echo ""
