@@ -330,7 +330,7 @@ EOF
 pids=\$(pgrep easytier)
 sudo kill -9 \$pids
 sudo systemctl daemon-reload
-sudo systemctl restart $service_name
+sudo systemctl restart "$service_name"
 EOF
 
     # Make the script executable
