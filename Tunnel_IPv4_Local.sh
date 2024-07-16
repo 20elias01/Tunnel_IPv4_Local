@@ -257,14 +257,17 @@ EOF
 }
 
 # Function to validate IP address
-validate_ip() {
-    local ip=$1
-    if [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        return 0
+  validate_ip() {
+    local IP=$1
+    if [[ $IP =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+      local IFS=.
+      IP=($IP)
+      [[ ${IP[0]} -le 255 && ${IP[1]} -le 255 && ${IP[2]} -le 255 && ${IP[3]} -le 255 ]]
+      return $?
     else
-        return 1
+      return 1
     fi
-}
+  }
 
 # Function to generate a random IPv4 address
 generate_random_ip() {
@@ -313,46 +316,59 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
+    # Function to set cronjob
+
+    local service_name="easymesh.service"
+    local RESET_SCRIPT="/root/easytier/reset.sh"
+
+    # Prompt user to enter the destination server IP address
+    read -p "$(echo -e "${BOLD_GREEN}Enter the Destination Local IP (Ip Local Maghsad): ${NC}")" TARGET_IP
+    while ! validate_ip "$TARGET_IP"; do
+        echo "Invalid IP format. Please enter a valid IP address."
+        read -p "$(echo -e "${BOLD_GREEN}EnEnter the Destination Local IP (Ip Local Maghsad): ${NC}")" TARGET_IP
+    done
+
+    # Create the reset script
+    cat << EOF > "$RESET_SCRIPT"
+#!/bin/bash
+
+TARGET_IP="$TARGET_IP"
+PING_COUNT=40
+REQUIRED_FAILS=10
+
+FAIL_COUNT=0
+
+for i in \$(seq 1 \$PING_COUNT); do
+  if ! ping -c 1 \$TARGET_IP > /dev/null; then
+    ((FAIL_COUNT++))
+    if [ \$FAIL_COUNT -ge \$REQUIRED_FAILS ]; then
+      echo "Ping to \$TARGET_IP failed \$REQUIRED_FAILS times consecutively. Executing commands."
+      pids=\$(pgrep easytier)
+      sudo kill -9 \$pids
+      sudo systemctl daemon-reload
+      sudo systemctl restart ${service_name}
+      break
+    fi
+  else
+    FAIL_COUNT=0  # Reset the counter if the ping is successful
+  fi
+done
+EOF
+
+    # Make the script executable
+    sudo chmod +x "$RESET_SCRIPT"
+
+    echo "reset.sh script created successfully in /root/easytier directory."
+
+    # Set up crontab to run reset.sh every minute
+    (crontab -l ; echo "* * * * * /root/easytier/reset.sh") | crontab -
+    echo -e "${BOLD_GREEN}Cron job set up to run /root/easytier/reset.sh every minute.${NC}"
+
     # Reload systemd, enable and start the service
     sudo systemctl daemon-reload &> /dev/null
     sudo systemctl enable easymesh.service &> /dev/null
     sudo systemctl start easymesh.service &> /dev/null
     clear
-
-    # Function to set cronjob
-
-    local service_name="easymesh.service"
-    local reset_path="/root/easytier/reset.sh"
-    
-    # Create the reset script
-    cat << EOF > "$reset_path"
-#! /bin/bash
-pids=\$(pgrep easytier)
-sudo kill -9 \$pids
-sudo systemctl daemon-reload
-sudo systemctl restart "$service_name"
-EOF
-
-    # Make the script executable
-    sudo chmod +x "$reset_path"
-    
-    # Save existing crontab to a temporary file
-    crontab -l > /tmp/crontab.tmp
-
-    # Remove any existing cron jobs for this service
-    grep -v "#$service_name" /tmp/crontab.tmp > /tmp/crontab.tmp.new
-    mv /tmp/crontab.tmp.new /tmp/crontab.tmp
-
-    # Append the new cron job to the temporary file
-    echo -e "${BOLD_GREEN}0 */2 * * * $reset_path #$service_name${NC}" >> /tmp/crontab.tmp
-
-    # Install the modified crontab from the temporary file
-    crontab /tmp/crontab.tmp
-
-    # Remove the temporary file
-    rm /tmp/crontab.tmp
-
-    echo -e "${BOLD_GREEN}Cron job set up to restart the service '$service_name' every 2 hours.${NC}"
 
     # Display tunnel configuration details
     echo -e "${BOLD_GREEN}IPv4 Tunnel configuration completed and service started.${NC}"
@@ -458,10 +474,13 @@ delete_tunnel() {
         return 1
     fi
 
-    if [[ ! -f $SERVICE_FILE ]]; then
-        not_exist
-        sleep 1
-        return 1
+    echo -e "${BOLD_RED}    Deleting cronjob...${NC}"
+    crontab -l | grep -v "/root/easytier/reset.sh" | crontab -
+    sudo rm /root/easytier/reset.sh
+    if [[ $? -eq 0 ]]; then
+        echo -e "${BOLD_GREEN}    Cronjob Deleted Successfully.${NC}"
+    else
+        echo -e "${BOLD_RED}    Failed to Delete Cronjob.${NC}"
     fi
 
     echo -e "${BOLD_RED}Deleting tunnel service...${NC}"
