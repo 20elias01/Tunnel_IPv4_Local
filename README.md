@@ -42,7 +42,7 @@ Ubuntu 20 or higher
 ## :checkered_flag: Running ##
 
 ``` 
-bash <(curl -Ls https://raw.githubusercontent.com/20elias01/Tunnel_IPv4Local/main/Tunnel_IPv4Local.sh)
+bash <(curl -sL https://raw.githubusercontent.com/20elias01/Tunnel_IPv4_Local/main/Tunnel_IPv4_Local.sh)
 ```
 
 ## :memo: Creator ##
